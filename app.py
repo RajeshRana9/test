@@ -111,6 +111,26 @@ def ranaatom_app():
     
     st.write(f"Analyzing: {st.session_state.protein_name}")
     txt = st.session_state.get("input_sequence", "")
+    if txt:
+    hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
+    data = {
+        "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
+        "Value": [
+            len(txt),
+            f"{protein_seq.molecular_weight()/1000:.1f} kDa" if len(txt) > 0 else "N/A",
+            f"{hydrophobic/len(txt)*100:.1f}%" if len(txt) > 0 else "N/A",
+            sum(txt.count(res) for res in 'KRH') - sum(txt.count(res) for res in 'DE'),
+            st.session_state.b_value
+        ]
+    }
+else:
+    data = {
+        "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
+        "Value": ["N/A", "N/A", "N/A", "N/A", st.session_state.b_value]
+    }
+
+st.table(data)
+
     # Advanced visualization controls
     st.sidebar.title('Analysis Settings')
     style = st.sidebar.selectbox("Style", 
