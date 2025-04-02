@@ -111,9 +111,9 @@ def ranaatom_app():
     
     st.write(f"Analyzing: {st.session_state.protein_name}")
     txt = st.session_state.get("input_sequence", "")
-    if txt:
+    if txt:  # Ensure txt is not empty before processing
     hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
-    protein_seq = ProteinAnalysis(txt)  # Ensure txt is not empty before analysis
+    protein_seq = ProteinAnalysis(txt)  # Calculate protein properties
     
     data = {
         "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
@@ -125,13 +125,11 @@ def ranaatom_app():
             st.session_state.b_value
         ]
     }
-else:
-    data = {
-        "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
-        "Value": ["N/A", "N/A", "N/A", "N/A", st.session_state.b_value]
-    }
+    
+    st.table(data)  # Display table inside the block
 
-st.table(data)
+else:
+    st.warning("No protein sequence provided. Please enter a sequence.")
 
 
     # Advanced visualization controls
