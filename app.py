@@ -163,7 +163,7 @@ def ranaatom_app():
         # Secondary structure analysis
         helix_count = sum(1 for line in st.session_state.pdb_string.split('\n') if line.startswith("HELIX"))
         sheet_count = sum(1 for line in st.session_state.pdb_string.split('\n') if line.startswith("SHEET"))
-        
+        coil_count = sum(1 for line in st.session_state.pdb_string.split('\n') if line.startswith("coil"))
         ss_data = pd.DataFrame({
             'Type': ['Helix', 'Sheet', 'Coil'],
             'Count': [helix_count, sheet_count, num_atoms - (helix_count + sheet_count)]
