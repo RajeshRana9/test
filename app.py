@@ -110,7 +110,7 @@ def ranaatom_app():
         return
     
     st.write(f"Analyzing: {st.session_state.protein_name}")
-    
+    txt = st.session_state.get("input_sequence", "")
     # Advanced visualization controls
     st.sidebar.title('Analysis Settings')
     style = st.sidebar.selectbox("Style", 
