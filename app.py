@@ -158,6 +158,20 @@ def ranaatom_app():
         )
     
     with col2:
+        st.subheader('🧪 Protein Properties')
+        protein_seq = ProteinAnalysis(txt)
+        hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
+        data = {
+            "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
+            "Value": [
+                len(txt),
+                f"{protein_seq.molecular_weight()/1000:.1f} kDa",
+                f"{hydrophobic/len(txt)*100:.1f}%",
+                sum(txt.count(res) for res in 'KRH') - sum(txt.count(res) for res in 'DE'),
+                st.session_state.b_value
+            ]
+        }
+        st.table(data)
         st.subheader("Structure Analysis")
         
         # Secondary structure analysis
@@ -182,20 +196,7 @@ def ranaatom_app():
         st.subheader("Residue Distribution")
         st.bar_chart(res_df)
 
-        st.subheader('🧪 Protein Properties')
-        protein_seq = ProteinAnalysis(txt)
-        hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
-        data = {
-            "Property": ["Length", "MW (Da)", "Hydrophobicity", "Net Charge", "Avg Confidence"],
-            "Value": [
-                len(txt),
-                f"{protein_seq.molecular_weight()/1000:.1f} kDa",
-                f"{hydrophobic/len(txt)*100:.1f}%",
-                sum(txt.count(res) for res in 'KRH') - sum(txt.count(res) for res in 'DE'),
-                st.session_state.b_value
-            ]
-        }
-        st.table(data)
+        
 # ========================
 # MAIN APP
 # ========================
