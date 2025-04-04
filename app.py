@@ -6,10 +6,9 @@ import biotite.structure.io as bsio
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import pandas as pd
 from collections import defaultdict
-import re
 import numpy as np
 import biotite.structure as bs
-import matplotlib.pyplot as plt
+from biotite.structure.io.pdb import PDBFile
 
 # Set page config
 st.set_page_config(layout='wide')
@@ -53,19 +52,18 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
-            st.session_state.pdb_string = st.session_state.pdb_string
-
+    
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
     show_labels = st.sidebar.checkbox("Show Residue Labels", False)
 
     if st.session_state.pdb_string:
         col1, col2 = st.columns([2, 1])
-
+        
         with col1:
             st.subheader(f'🧬 {st.session_state.protein_name} Structure')
             st.caption(f"Confidence score: {st.session_state.b_value}")
-
+            
             pdbview = py3Dmol.view()
             pdbview.addModel(st.session_state.pdb_string, 'pdb')
             pdbview.setStyle({'cartoon': {'color': 'spectrum'}})
@@ -75,26 +73,25 @@ def emsfold_app():
             pdbview.zoomTo()
             pdbview.spin(True)
             showmol(pdbview, height=500, width=800)
-
+            
             st.download_button(
                 label="📥 Download PDB",
                 data=st.session_state.pdb_string,
                 file_name=f'{st.session_state.protein_name.replace(" ", "_")}.pdb',
                 mime='text/plain'
             )
-
+        
         with col2:
             st.subheader('📊 Confidence Scores')
-            color_table = """
+            st.markdown("""
             | Color | plDDT Score | Confidence Level |
-            |-------|------------|------------------|
-            | 🔵  | 90-100 | Very High |
-            | 🟢  | 70-90 | High |
-            | 🟡  | 50-70 | Medium |
-            | 🔴  | <50 | Low |
-            """
-            st.markdown(color_table)
-
+            |-------|-------------|------------------|
+            | 🔵     | 90-100      | Very High        |
+            | 🟢     | 70-90       | High             |
+            | 🟡     | 50-70       | Medium           |
+            | 🔴     | <50         | Low              |
+            """)
+            
             st.subheader('🧪 Protein Properties')
             protein_seq = ProteinAnalysis(txt)
             hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
@@ -117,30 +114,30 @@ def emsfold_app():
 # ========================
 def ranaatom_app():
     st.title("🔍 PDB Analysis Toolkit")
-
+    
     if not st.session_state.pdb_string:
         st.warning("No structure available. Please predict a structure first in the Predictor tab.")
         return
-
+    
     st.write(f"Analyzing: {st.session_state.protein_name}")
-
+    
     st.sidebar.title('Analysis Settings')
     style = st.sidebar.selectbox("Style", ["cartoon", "sphere", "stick", "surface"], index=0)
     color_scheme = st.sidebar.selectbox("Color Scheme", ["spectrum", "chain", "residue"], index=0)
     show_labels = st.sidebar.checkbox("Show Atom Labels", False)
 
     col1, col2 = st.columns(2)
-
+    
     with col1:
         st.subheader(f"🔬 {st.session_state.protein_name} Structure")
-
+        
         atom_lines = [line for line in st.session_state.pdb_string.split('\n') if line.startswith("ATOM")]
         num_atoms = len(atom_lines)
         st.caption(f"{num_atoms:,} atoms | {len(set(line[21] for line in atom_lines))} chains")
-
+        
         view = py3Dmol.view(width=600, height=400)
         view.addModel(st.session_state.pdb_string, "pdb")
-
+        
         if style == "cartoon":
             view.setStyle({'cartoon': {'color': color_scheme}})
         elif style == "sphere":
@@ -149,13 +146,12 @@ def ranaatom_app():
             view.setStyle({'stick': {'colorscheme': color_scheme}})
         elif style == "surface":
             view.addSurface(py3Dmol.VDW, {'opacity':0.7, 'color':'white'})
-
+        
         if show_labels:
             view.addResLabels()
-
         view.zoomTo()
         showmol(view, height=400)
-
+        
         st.download_button(
             label="⬇️ Download PDB",
             data=st.session_state.pdb_string,
@@ -164,40 +160,30 @@ def ranaatom_app():
         )
 
     with col2:
-        st.subheader("📈 Dihedral Angle Summary")
+        st.subheader("Residue Distribution")
+
+        res_counts = defaultdict(int)
+        for line in atom_lines:
+            res_name = line[17:20].strip()
+            res_counts[res_name] += 1
+        
+        res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
+        st.bar_chart(res_df)
+
+        st.subheader("Ramachandran Plot")
         with open("predicted.pdb", "w") as f:
             f.write(st.session_state.pdb_string)
 
-        struct = bsio.load_structure("predicted.pdb")
-        structure = struct[0]  # First model
-
-        chains = set(structure.chain_id)
-        if len(chains) > 1:
-            chain_id = list(chains)[0]
-            structure = structure[structure.chain_id == chain_id]
-
+        pdb_file = PDBFile.read("predicted.pdb")
+        structure = pdb_file.get_structure(model=1)
         structure = structure[bs.filter_amino_acids(structure)]
 
-        phi, psi = bs.dihedral_backbone(structure)
-        valid = ~np.isnan(phi) & ~np.isnan(psi)
-
-        stats = {
-            "ϕ (phi)": [f"{np.nanmean(phi):.1f}", f"{np.nanstd(phi):.1f}"],
-            "ψ (psi)": [f"{np.nanmean(psi):.1f}", f"{np.nanstd(psi):.1f}"]
-        }
-        df_angles = pd.DataFrame(stats, index=["Mean", "Std Dev"])
-        st.table(df_angles)
-
-        st.subheader("📉 Ramachandran Plot")
-        fig, ax = plt.subplots()
-        ax.scatter(phi[valid], psi[valid], s=5, alpha=0.6, color="darkblue")
-        ax.set_xlabel("ϕ (phi)", fontsize=12)
-        ax.set_ylabel("ψ (psi)", fontsize=12)
-        ax.set_xlim(-180, 180)
-        ax.set_ylim(-180, 180)
-        ax.grid(True, linestyle='--', alpha=0.3)
-        ax.set_title("Ramachandran Plot")
-        st.pyplot(fig)
+        try:
+            phi, psi = bs.dihedral_backbone(structure)
+            ramachandran_df = pd.DataFrame({'phi': phi, 'psi': psi})
+            st.scatter_chart(ramachandran_df)
+        except Exception as e:
+            st.error("Could not compute Ramachandran plot. Please check the structure.")
 
 # ========================
 # MAIN APP
@@ -212,6 +198,7 @@ st.markdown('''
         </p>
     </div>
     ''', unsafe_allow_html=True) 
+
 tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
 with tab1:
     emsfold_app()
