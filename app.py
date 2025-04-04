@@ -7,14 +7,14 @@ from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import pandas as pd
 from collections import defaultdict
 import numpy as np
-import biotite.structure as bs
 import seaborn as sns
 import matplotlib.pyplot as plt
+import biotite.structure as bs
 
 # Set page config
 st.set_page_config(layout='wide')
 
-# Initialize session state
+# Session state initialization
 if 'pdb_string' not in st.session_state:
     st.session_state.pdb_string = None
 if 'b_value' not in st.session_state:
@@ -22,30 +22,26 @@ if 'b_value' not in st.session_state:
 if 'protein_name' not in st.session_state:
     st.session_state.protein_name = "Predicted Protein"
 
-# ========================
-# SHARED FUNCTIONS
-# ========================
+# Shared function to predict structure
 def update(sequence):
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     response = requests.post('https://api.esmatlas.com/foldSequence/v1/pdb/', 
-                             headers=headers, 
-                             data=sequence)
+                           headers=headers, 
+                           data=sequence)
     st.session_state.pdb_string = response.content.decode('utf-8')
     with open('predicted.pdb', 'w') as f:
         f.write(st.session_state.pdb_string)
     struct = bsio.load_structure('predicted.pdb', extra_fields=["b_factor"])
     st.session_state.b_value = round(struct.b_factor.mean(), 4)
 
-# ========================
-# EMSFold APP (Prediction)
-# ========================
+# Predictor tab
 def emsfold_app():
     st.sidebar.title('ProtoAnalyzer')
     st.sidebar.write("Predict protein structures from sequence")
 
     DEFAULT_SEQ = "MGSSHHHHHHSSGLVPRGSHMRGPNPTAASLEASAGPFTVRSFTVSRPSGYGAGTVYYPTNAGGTVGAIAIVPGYTARQSSIKWWGPRLASHGFVVITIDTNSTLDQPSSRSSQQMAALRQVASLNGTSSSPIYGKVDTARMGVMGWSMGGGGSLISAANNPSLKAAAPQAPWDSSTNFSSVTVPTLIFACENDSIAPVNSSALPIYDSMSRNAKQFLEINGGSHSCANSGNSNQALIGKKGVAWMKRFMDNDTRYSTFACENPNSTRVSDFRTANCSLEDPAANKARKEAELAAATAEQ"
     txt = st.sidebar.text_area('Input sequence', DEFAULT_SEQ, height=275)
-
+    
     custom_name = st.sidebar.text_input("Protein Name", st.session_state.protein_name)
     st.session_state.protein_name = custom_name
 
@@ -53,7 +49,6 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
-            st.session_state.pdb_string = st.session_state.pdb_string
 
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
@@ -61,11 +56,10 @@ def emsfold_app():
 
     if st.session_state.pdb_string:
         col1, col2 = st.columns([2, 1])
-
         with col1:
             st.subheader(f'🧬 {st.session_state.protein_name} Structure')
             st.caption(f"Confidence score: {st.session_state.b_value}")
-
+            
             pdbview = py3Dmol.view()
             pdbview.addModel(st.session_state.pdb_string, 'pdb')
             pdbview.setStyle({'cartoon': {'color': 'spectrum'}})
@@ -76,24 +70,21 @@ def emsfold_app():
             pdbview.spin(True)
             showmol(pdbview, height=500, width=800)
 
-            st.download_button(
-                label="📥 Download PDB",
+            st.download_button("📥 Download PDB",
                 data=st.session_state.pdb_string,
                 file_name=f'{st.session_state.protein_name.replace(" ", "_")}.pdb',
-                mime='text/plain'
-            )
-
+                mime='text/plain')
+        
         with col2:
             st.subheader('📊 Confidence Scores')
-            color_table = """
+            st.markdown("""
             | Color | plDDT Score | Confidence Level |
-            |-------|------------|------------------|
-            | 🔵  | 90-100 | Very High |
-            | 🟢  | 70-90  | High       |
-            | 🟡  | 50-70  | Medium     |
-            | 🔴  | <50    | Low        |
-            """
-            st.markdown(color_table)
+            |-------|-------------|------------------|
+            | 🔵    | 90-100      | Very High        |
+            | 🟢    | 70-90       | High             |
+            | 🟡    | 50-70       | Medium           |
+            | 🔴    | <50         | Low              |
+            """)
 
             st.subheader('🧪 Protein Properties')
             protein_seq = ProteinAnalysis(txt)
@@ -112,9 +103,7 @@ def emsfold_app():
     else:
         st.info("💡 Enter a protein sequence and click 'Predict Structure'")
 
-# ========================
-# Analyzer APP
-# ========================
+# Analyzer tab
 def ranaatom_app():
     st.title("🔍 PDB Analysis Toolkit")
 
@@ -130,7 +119,6 @@ def ranaatom_app():
     show_labels = st.sidebar.checkbox("Show Atom Labels", False)
 
     col1, col2 = st.columns(2)
-
     with col1:
         st.subheader(f"🔬 {st.session_state.protein_name} Structure")
         atom_lines = [line for line in st.session_state.pdb_string.split('\n') if line.startswith("ATOM")]
@@ -155,12 +143,10 @@ def ranaatom_app():
         view.zoomTo()
         showmol(view, height=400)
 
-        st.download_button(
-            label="⬇️ Download PDB",
+        st.download_button("⬇️ Download PDB",
             data=st.session_state.pdb_string,
             file_name=f'{st.session_state.protein_name.replace(" ", "_")}.pdb',
-            mime='text/plain'
-        )
+            mime='text/plain')
 
     with col2:
         st.subheader("Residue Distribution")
@@ -168,47 +154,52 @@ def ranaatom_app():
         for line in atom_lines:
             res_name = line[17:20].strip()
             res_counts[res_name] += 1
-
         res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
         st.bar_chart(res_df)
 
-        # ===========================
-        # Heatmap of Residue Distances
-        # ===========================
+        # Heatmap of residue-residue distances (C-alpha atoms)
         st.subheader("Residue-Residue Distance Heatmap")
-
-        with open("predicted.pdb", "w") as f:
-            f.write(st.session_state.pdb_string)
-
         struct = bsio.load_structure("predicted.pdb")
-        ca_atoms = struct[(struct.atom_name == "CA") & bs.filter_amino_acids(struct)]
+        ca_atoms = struct[struct.atom_name == "CA"]
+        coords = ca_atoms.coord
+        dist_matrix = np.linalg.norm(coords[:, np.newaxis, :] - coords[np.newaxis, :, :], axis=-1)
 
-        if len(ca_atoms) > 1:
-            coords = ca_atoms.coord
-            distances = np.linalg.norm(coords[:, np.newaxis, :] - coords[np.newaxis, :, :], axis=-1)
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(dist_matrix, cmap='coolwarm', ax=ax)
+        ax.set_title("Distance Map (Cα-Cα)")
+        ax.set_xlabel("Residue Index")
+        ax.set_ylabel("Residue Index")
+        st.pyplot(fig)
 
-            fig, ax = plt.subplots(figsize=(6, 5))
-            sns.heatmap(distances, cmap="viridis", ax=ax)
-            ax.set_title("CA Atom Distance Matrix")
-            ax.set_xlabel("Residue Index")
-            ax.set_ylabel("Residue Index")
-            st.pyplot(fig)
-        else:
-            st.warning("Not enough CA atoms to calculate distance matrix.")
+        # Additional analysis: Residue Hydrophobicity Profile
+        st.subheader("Hydrophobicity Profile")
+        sequence = ''.join([line[13] for line in atom_lines if line[12:16].strip() == "CA"])
+        hydropathy_index = {
+            'A': 1.8, 'C': 2.5, 'D': -3.5, 'E': -3.5, 'F': 2.8,
+            'G': -0.4, 'H': -3.2, 'I': 4.5, 'K': -3.9, 'L': 3.8,
+            'M': 1.9, 'N': -3.5, 'P': -1.6, 'Q': -3.5, 'R': -4.5,
+            'S': -0.8, 'T': -0.7, 'V': 4.2, 'W': -0.9, 'Y': -1.3
+        }
+        hydrophobicity = [hydropathy_index.get(aa, 0.0) for aa in sequence]
+        fig2, ax2 = plt.subplots(figsize=(8, 3))
+        ax2.plot(hydrophobicity, label="Hydropathy")
+        ax2.set_xlabel("Residue Index")
+        ax2.set_ylabel("Hydropathy")
+        ax2.set_title("Hydrophobicity Profile")
+        ax2.legend()
+        st.pyplot(fig2)
 
-# ========================
-# MAIN APP
-# ========================
+# Main layout
 st.markdown(''' 
     <div style="text-align: center;">
         <h1 style="font-family: 'Dustosmo Roman', 'Times New Roman', serif; color:lightyellow;">
             ProtoAnalyzer
         </h1>
         <p>
-            <em>A Streamlit <strong>Component</strong> for protein structure prediction and analysis.</em>
+            <em>A Streamlit <strong>Component</strong> for creating and analyzing protein structures.</em>
         </p>
     </div>
-    ''', unsafe_allow_html=True)
+    ''', unsafe_allow_html=True) 
 
 tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
 with tab1:
