@@ -3,11 +3,12 @@ from stmol import showmol
 import py3Dmol
 import requests
 import biotite.structure.io as bsio
-import biotite.structure as bs
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import pandas as pd
-import numpy as np
 from collections import defaultdict
+import re
+import numpy as np
+import biotite.structure as bs
 import matplotlib.pyplot as plt
 
 # Set page config
@@ -41,9 +42,10 @@ def update(sequence):
 def emsfold_app():
     st.sidebar.title('ProtoAnalyzer')
     st.sidebar.write("Predict protein structures from sequence")
-    
+
     DEFAULT_SEQ = "MGSSHHHHHHSSGLVPRGSHMRGPNPTAASLEASAGPFTVRSFTVSRPSGYGAGTVYYPTNAGGTVGAIAIVPGYTARQSSIKWWGPRLASHGFVVITIDTNSTLDQPSSRSSQQMAALRQVASLNGTSSSPIYGKVDTARMGVMGWSMGGGGSLISAANNPSLKAAAPQAPWDSSTNFSSVTVPTLIFACENDSIAPVNSSALPIYDSMSRNAKQFLEINGGSHSCANSGNSNQALIGKKGVAWMKRFMDNDTRYSTFACENPNSTRVSDFRTANCSLEDPAANKARKEAELAAATAEQ"
     txt = st.sidebar.text_area('Input sequence', DEFAULT_SEQ, height=275)
+
     custom_name = st.sidebar.text_input("Protein Name", st.session_state.protein_name)
     st.session_state.protein_name = custom_name
 
@@ -51,18 +53,19 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
-    
+            st.session_state.pdb_string = st.session_state.pdb_string
+
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
     show_labels = st.sidebar.checkbox("Show Residue Labels", False)
 
     if st.session_state.pdb_string:
         col1, col2 = st.columns([2, 1])
-        
+
         with col1:
             st.subheader(f'🧬 {st.session_state.protein_name} Structure')
             st.caption(f"Confidence score: {st.session_state.b_value}")
-            
+
             pdbview = py3Dmol.view()
             pdbview.addModel(st.session_state.pdb_string, 'pdb')
             pdbview.setStyle({'cartoon': {'color': 'spectrum'}})
@@ -72,25 +75,26 @@ def emsfold_app():
             pdbview.zoomTo()
             pdbview.spin(True)
             showmol(pdbview, height=500, width=800)
-            
+
             st.download_button(
                 label="📥 Download PDB",
                 data=st.session_state.pdb_string,
                 file_name=f'{st.session_state.protein_name.replace(" ", "_")}.pdb',
                 mime='text/plain'
             )
-        
+
         with col2:
             st.subheader('📊 Confidence Scores')
-            st.markdown("""
+            color_table = """
             | Color | plDDT Score | Confidence Level |
-            |-------|-------------|------------------|
-            | 🔵    | 90-100      | Very High        |
-            | 🟢    | 70-90       | High             |
-            | 🟡    | 50-70       | Medium           |
-            | 🔴    | <50         | Low              |
-            """)
-            
+            |-------|------------|------------------|
+            | 🔵  | 90-100 | Very High |
+            | 🟢  | 70-90 | High |
+            | 🟡  | 50-70 | Medium |
+            | 🔴  | <50 | Low |
+            """
+            st.markdown(color_table)
+
             st.subheader('🧪 Protein Properties')
             protein_seq = ProteinAnalysis(txt)
             hydrophobic = sum(txt.count(res) for res in 'AILMFWYV')
@@ -113,30 +117,30 @@ def emsfold_app():
 # ========================
 def ranaatom_app():
     st.title("🔍 PDB Analysis Toolkit")
-    
+
     if not st.session_state.pdb_string:
         st.warning("No structure available. Please predict a structure first in the Predictor tab.")
         return
-    
+
     st.write(f"Analyzing: {st.session_state.protein_name}")
-    
-    # Sidebar options
+
     st.sidebar.title('Analysis Settings')
     style = st.sidebar.selectbox("Style", ["cartoon", "sphere", "stick", "surface"], index=0)
     color_scheme = st.sidebar.selectbox("Color Scheme", ["spectrum", "chain", "residue"], index=0)
     show_labels = st.sidebar.checkbox("Show Atom Labels", False)
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.subheader(f"🔬 {st.session_state.protein_name} Structure")
+
         atom_lines = [line for line in st.session_state.pdb_string.split('\n') if line.startswith("ATOM")]
         num_atoms = len(atom_lines)
         st.caption(f"{num_atoms:,} atoms | {len(set(line[21] for line in atom_lines))} chains")
-        
+
         view = py3Dmol.view(width=600, height=400)
         view.addModel(st.session_state.pdb_string, "pdb")
-        
+
         if style == "cartoon":
             view.setStyle({'cartoon': {'color': color_scheme}})
         elif style == "sphere":
@@ -144,10 +148,11 @@ def ranaatom_app():
         elif style == "stick":
             view.setStyle({'stick': {'colorscheme': color_scheme}})
         elif style == "surface":
-            view.addSurface(py3Dmol.VDW, {'opacity': 0.7, 'color': 'white'})
-        
+            view.addSurface(py3Dmol.VDW, {'opacity':0.7, 'color':'white'})
+
         if show_labels:
             view.addResLabels()
+
         view.zoomTo()
         showmol(view, height=400)
 
@@ -157,21 +162,23 @@ def ranaatom_app():
             file_name=f'{st.session_state.protein_name.replace(" ", "_")}.pdb',
             mime='text/plain'
         )
-    
-    with col2:
-        st.subheader("Residue Distribution")
-        res_counts = defaultdict(int)
-        for line in atom_lines:
-            res_name = line[17:20].strip()
-            res_counts[res_name] += 1
-        res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
-        st.bar_chart(res_df)
 
+    with col2:
         st.subheader("📈 Dihedral Angle Summary")
         with open("predicted.pdb", "w") as f:
             f.write(st.session_state.pdb_string)
+
         struct = bsio.load_structure("predicted.pdb")
-        phi, psi = bs.dihedral_backbone(struct)
+        structure = struct[0]  # First model
+
+        chains = set(structure.chain_id)
+        if len(chains) > 1:
+            chain_id = list(chains)[0]
+            structure = structure[structure.chain_id == chain_id]
+
+        structure = structure[bs.filter_amino_acids(structure)]
+
+        phi, psi = bs.dihedral_backbone(structure)
         valid = ~np.isnan(phi) & ~np.isnan(psi)
 
         stats = {
@@ -205,7 +212,6 @@ st.markdown('''
         </p>
     </div>
     ''', unsafe_allow_html=True) 
-
 tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
 with tab1:
     emsfold_app()
