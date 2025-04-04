@@ -3,11 +3,12 @@ from stmol import showmol
 import py3Dmol
 import requests
 import biotite.structure.io as bsio
+import biotite.structure as bs
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import pandas as pd
-from collections import defaultdict
 import numpy as np
-import biotite.structure as bs
+from collections import defaultdict
+import matplotlib.pyplot as plt
 
 # Set page config
 st.set_page_config(layout='wide')
@@ -43,7 +44,6 @@ def emsfold_app():
     
     DEFAULT_SEQ = "MGSSHHHHHHSSGLVPRGSHMRGPNPTAASLEASAGPFTVRSFTVSRPSGYGAGTVYYPTNAGGTVGAIAIVPGYTARQSSIKWWGPRLASHGFVVITIDTNSTLDQPSSRSSQQMAALRQVASLNGTSSSPIYGKVDTARMGVMGWSMGGGGSLISAANNPSLKAAAPQAPWDSSTNFSSVTVPTLIFACENDSIAPVNSSALPIYDSMSRNAKQFLEINGGSHSCANSGNSNQALIGKKGVAWMKRFMDNDTRYSTFACENPNSTRVSDFRTANCSLEDPAANKARKEAELAAATAEQ"
     txt = st.sidebar.text_area('Input sequence', DEFAULT_SEQ, height=275)
-    
     custom_name = st.sidebar.text_input("Protein Name", st.session_state.protein_name)
     st.session_state.protein_name = custom_name
 
@@ -51,7 +51,6 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
-            st.session_state.pdb_string = st.session_state.pdb_string
     
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
@@ -83,15 +82,14 @@ def emsfold_app():
         
         with col2:
             st.subheader('📊 Confidence Scores')
-            color_table = """
+            st.markdown("""
             | Color | plDDT Score | Confidence Level |
-            |-------|------------|------------------|
-            | 🔵  | 90-100 | Very High |
-            | 🟢  | 70-90 | High |
-            | 🟡  | 50-70 | Medium |
-            | 🔴  | <50 | Low |
-            """
-            st.markdown(color_table)
+            |-------|-------------|------------------|
+            | 🔵    | 90-100      | Very High        |
+            | 🟢    | 70-90       | High             |
+            | 🟡    | 50-70       | Medium           |
+            | 🔴    | <50         | Low              |
+            """)
             
             st.subheader('🧪 Protein Properties')
             protein_seq = ProteinAnalysis(txt)
@@ -122,20 +120,16 @@ def ranaatom_app():
     
     st.write(f"Analyzing: {st.session_state.protein_name}")
     
+    # Sidebar options
     st.sidebar.title('Analysis Settings')
-    style = st.sidebar.selectbox("Style", 
-                               ["cartoon", "sphere", "stick", "surface"],
-                               index=0)
-    color_scheme = st.sidebar.selectbox("Color Scheme",
-                                      ["spectrum", "chain", "residue"],
-                                      index=0)
+    style = st.sidebar.selectbox("Style", ["cartoon", "sphere", "stick", "surface"], index=0)
+    color_scheme = st.sidebar.selectbox("Color Scheme", ["spectrum", "chain", "residue"], index=0)
     show_labels = st.sidebar.checkbox("Show Atom Labels", False)
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader(f"🔬 {st.session_state.protein_name} Structure")
-        
         atom_lines = [line for line in st.session_state.pdb_string.split('\n') if line.startswith("ATOM")]
         num_atoms = len(atom_lines)
         st.caption(f"{num_atoms:,} atoms | {len(set(line[21] for line in atom_lines))} chains")
@@ -150,14 +144,13 @@ def ranaatom_app():
         elif style == "stick":
             view.setStyle({'stick': {'colorscheme': color_scheme}})
         elif style == "surface":
-            view.addSurface(py3Dmol.VDW, {'opacity':0.7, 'color':'white'})
+            view.addSurface(py3Dmol.VDW, {'opacity': 0.7, 'color': 'white'})
         
         if show_labels:
             view.addResLabels()
-            
         view.zoomTo()
         showmol(view, height=400)
-        
+
         st.download_button(
             label="⬇️ Download PDB",
             data=st.session_state.pdb_string,
@@ -166,35 +159,38 @@ def ranaatom_app():
         )
     
     with col2:
-        st.subheader("Structure Analysis")
-
-        # --- FIXED SECONDARY STRUCTURE ANALYSIS ---
-        with open("predicted.pdb", "w") as f:
-            f.write(st.session_state.pdb_string)
-        structure = bsio.load_structure("predicted.pdb", extra_fields=["b_factor"])
-        b_factors = structure.b_factor
-
-        helix_count = np.sum(b_factors > 80)
-        sheet_count = np.sum((b_factors > 50) & (b_factors <= 80))
-        coil_count = np.sum(b_factors <= 50)
-
-        ss_data = pd.DataFrame({
-            'Type': ['Helix', 'Sheet', 'Coil'],
-            'Count': [helix_count, sheet_count, coil_count]
-        })
-
-        st.subheader("Secondary Structure (Approximated from pLDDT)")
-        st.bar_chart(ss_data.set_index('Type'))
-
-        # Residue distribution
+        st.subheader("Residue Distribution")
         res_counts = defaultdict(int)
         for line in atom_lines:
             res_name = line[17:20].strip()
             res_counts[res_name] += 1
-        
         res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
-        st.subheader("Residue Distribution")
         st.bar_chart(res_df)
+
+        st.subheader("📈 Dihedral Angle Summary")
+        with open("predicted.pdb", "w") as f:
+            f.write(st.session_state.pdb_string)
+        struct = bsio.load_structure("predicted.pdb")
+        phi, psi = bs.dihedral_backbone(struct)
+        valid = ~np.isnan(phi) & ~np.isnan(psi)
+
+        stats = {
+            "ϕ (phi)": [f"{np.nanmean(phi):.1f}", f"{np.nanstd(phi):.1f}"],
+            "ψ (psi)": [f"{np.nanmean(psi):.1f}", f"{np.nanstd(psi):.1f}"]
+        }
+        df_angles = pd.DataFrame(stats, index=["Mean", "Std Dev"])
+        st.table(df_angles)
+
+        st.subheader("📉 Ramachandran Plot")
+        fig, ax = plt.subplots()
+        ax.scatter(phi[valid], psi[valid], s=5, alpha=0.6, color="darkblue")
+        ax.set_xlabel("ϕ (phi)", fontsize=12)
+        ax.set_ylabel("ψ (psi)", fontsize=12)
+        ax.set_xlim(-180, 180)
+        ax.set_ylim(-180, 180)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        ax.set_title("Ramachandran Plot")
+        st.pyplot(fig)
 
 # ========================
 # MAIN APP
@@ -209,6 +205,7 @@ st.markdown('''
         </p>
     </div>
     ''', unsafe_allow_html=True) 
+
 tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
 with tab1:
     emsfold_app()
