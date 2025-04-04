@@ -6,13 +6,12 @@ import biotite.structure.io as bsio
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 import pandas as pd
 from collections import defaultdict
-import re
 import numpy as np
 import biotite.structure as bs
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# Page config
+# Set page config
 st.set_page_config(layout='wide')
 
 # Initialize session state
@@ -38,7 +37,7 @@ def update(sequence):
     st.session_state.b_value = round(struct.b_factor.mean(), 4)
 
 # ========================
-# EMSFold APP
+# EMSFold APP (Prediction)
 # ========================
 def emsfold_app():
     st.sidebar.title('ProtoAnalyzer')
@@ -54,6 +53,7 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
+            st.session_state.pdb_string = st.session_state.pdb_string
 
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
@@ -87,11 +87,11 @@ def emsfold_app():
             st.subheader('📊 Confidence Scores')
             color_table = """
             | Color | plDDT Score | Confidence Level |
-            |-------|-------------|------------------|
-            | 🔵    | 90-100      | Very High        |
-            | 🟢    | 70-90       | High             |
-            | 🟡    | 50-70       | Medium           |
-            | 🔴    | <50         | Low              |
+            |-------|------------|------------------|
+            | 🔵  | 90-100 | Very High |
+            | 🟢  | 70-90  | High       |
+            | 🟡  | 50-70  | Medium     |
+            | 🔴  | <50    | Low        |
             """
             st.markdown(color_table)
 
@@ -113,7 +113,7 @@ def emsfold_app():
         st.info("💡 Enter a protein sequence and click 'Predict Structure'")
 
 # ========================
-# ranaatom APP (Analyzer)
+# Analyzer APP
 # ========================
 def ranaatom_app():
     st.title("🔍 PDB Analysis Toolkit")
@@ -163,8 +163,7 @@ def ranaatom_app():
         )
 
     with col2:
-        st.subheader("Residue Type Distribution")
-
+        st.subheader("Residue Distribution")
         res_counts = defaultdict(int)
         for line in atom_lines:
             res_name = line[17:20].strip()
@@ -178,5 +177,41 @@ def ranaatom_app():
         # ===========================
         st.subheader("Residue-Residue Distance Heatmap")
 
+        with open("predicted.pdb", "w") as f:
+            f.write(st.session_state.pdb_string)
+
         struct = bsio.load_structure("predicted.pdb")
-        ca_atoms = struct[(struct.atom_name == "
+        ca_atoms = struct[(struct.atom_name == "CA") & bs.filter_amino_acids(struct)]
+
+        if len(ca_atoms) > 1:
+            coords = ca_atoms.coord
+            distances = np.linalg.norm(coords[:, np.newaxis, :] - coords[np.newaxis, :, :], axis=-1)
+
+            fig, ax = plt.subplots(figsize=(6, 5))
+            sns.heatmap(distances, cmap="viridis", ax=ax)
+            ax.set_title("CA Atom Distance Matrix")
+            ax.set_xlabel("Residue Index")
+            ax.set_ylabel("Residue Index")
+            st.pyplot(fig)
+        else:
+            st.warning("Not enough CA atoms to calculate distance matrix.")
+
+# ========================
+# MAIN APP
+# ========================
+st.markdown(''' 
+    <div style="text-align: center;">
+        <h1 style="font-family: 'Dustosmo Roman', 'Times New Roman', serif; color:lightyellow;">
+            ProtoAnalyzer
+        </h1>
+        <p>
+            <em>A Streamlit <strong>Component</strong> for protein structure prediction and analysis.</em>
+        </p>
+    </div>
+    ''', unsafe_allow_html=True)
+
+tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
+with tab1:
+    emsfold_app()
+with tab2:
+    ranaatom_app()
