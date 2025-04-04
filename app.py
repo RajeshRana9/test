@@ -9,10 +9,10 @@ from collections import defaultdict
 import re
 import numpy as np
 import biotite.structure as bs
+import seaborn as sns
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
-# Set page config
+# Page config
 st.set_page_config(layout='wide')
 
 # Initialize session state
@@ -29,8 +29,8 @@ if 'protein_name' not in st.session_state:
 def update(sequence):
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     response = requests.post('https://api.esmatlas.com/foldSequence/v1/pdb/', 
-                           headers=headers, 
-                           data=sequence)
+                             headers=headers, 
+                             data=sequence)
     st.session_state.pdb_string = response.content.decode('utf-8')
     with open('predicted.pdb', 'w') as f:
         f.write(st.session_state.pdb_string)
@@ -38,17 +38,15 @@ def update(sequence):
     st.session_state.b_value = round(struct.b_factor.mean(), 4)
 
 # ========================
-# EMSFold APP (Prediction)
+# EMSFold APP
 # ========================
 def emsfold_app():
     st.sidebar.title('ProtoAnalyzer')
     st.sidebar.write("Predict protein structures from sequence")
 
-    # Sequence input
     DEFAULT_SEQ = "MGSSHHHHHHSSGLVPRGSHMRGPNPTAASLEASAGPFTVRSFTVSRPSGYGAGTVYYPTNAGGTVGAIAIVPGYTARQSSIKWWGPRLASHGFVVITIDTNSTLDQPSSRSSQQMAALRQVASLNGTSSSPIYGKVDTARMGVMGWSMGGGGSLISAANNPSLKAAAPQAPWDSSTNFSSVTVPTLIFACENDSIAPVNSSALPIYDSMSRNAKQFLEINGGSHSCANSGNSNQALIGKKGVAWMKRFMDNDTRYSTFACENPNSTRVSDFRTANCSLEDPAANKARKEAELAAATAEQ"
     txt = st.sidebar.text_area('Input sequence', DEFAULT_SEQ, height=275)
 
-    # Protein name input
     custom_name = st.sidebar.text_input("Protein Name", st.session_state.protein_name)
     st.session_state.protein_name = custom_name
 
@@ -56,9 +54,7 @@ def emsfold_app():
         with st.spinner('Predicting structure...'):
             update(txt)
             st.success("Prediction complete! Switch to the Analyzer tab to view details.")
-            st.session_state.pdb_string = st.session_state.pdb_string  # Ensure persistence
 
-    # Visualization settings
     st.sidebar.title('Display Options')
     background_color = st.sidebar.color_picker("Background", "#000000")
     show_labels = st.sidebar.checkbox("Show Residue Labels", False)
@@ -91,11 +87,11 @@ def emsfold_app():
             st.subheader('📊 Confidence Scores')
             color_table = """
             | Color | plDDT Score | Confidence Level |
-            |-------|------------|------------------|
-            | 🔵  | 90-100 | Very High |
-            | 🟢  | 70-90 | High |
-            | 🟡  | 50-70 | Medium |
-            | 🔴  | <50 | Low |
+            |-------|-------------|------------------|
+            | 🔵    | 90-100      | Very High        |
+            | 🟢    | 70-90       | High             |
+            | 🟡    | 50-70       | Medium           |
+            | 🔴    | <50         | Low              |
             """
             st.markdown(color_table)
 
@@ -117,7 +113,7 @@ def emsfold_app():
         st.info("💡 Enter a protein sequence and click 'Predict Structure'")
 
 # ========================
-# ranaatom APP (Analysis)
+# ranaatom APP (Analyzer)
 # ========================
 def ranaatom_app():
     st.title("🔍 PDB Analysis Toolkit")
@@ -128,7 +124,6 @@ def ranaatom_app():
 
     st.write(f"Analyzing: {st.session_state.protein_name}")
 
-    # Advanced visualization controls
     st.sidebar.title('Analysis Settings')
     style = st.sidebar.selectbox("Style", ["cartoon", "sphere", "stick", "surface"], index=0)
     color_scheme = st.sidebar.selectbox("Color Scheme", ["spectrum", "chain", "residue"], index=0)
@@ -138,7 +133,6 @@ def ranaatom_app():
 
     with col1:
         st.subheader(f"🔬 {st.session_state.protein_name} Structure")
-
         atom_lines = [line for line in st.session_state.pdb_string.split('\n') if line.startswith("ATOM")]
         num_atoms = len(atom_lines)
         st.caption(f"{num_atoms:,} atoms | {len(set(line[21] for line in atom_lines))} chains")
@@ -153,7 +147,7 @@ def ranaatom_app():
         elif style == "stick":
             view.setStyle({'stick': {'colorscheme': color_scheme}})
         elif style == "surface":
-            view.addSurface(py3Dmol.VDW, {'opacity':0.7, 'color':'white'})
+            view.addSurface(py3Dmol.VDW, {'opacity': 0.7, 'color': 'white'})
 
         if show_labels:
             view.addResLabels()
@@ -169,54 +163,20 @@ def ranaatom_app():
         )
 
     with col2:
-        st.subheader("Structure Analysis")
+        st.subheader("Residue Type Distribution")
 
-        pdb_lines = st.session_state.pdb_string.split('\n')
         res_counts = defaultdict(int)
         for line in atom_lines:
             res_name = line[17:20].strip()
             res_counts[res_name] += 1
 
         res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
-        st.subheader("Residue Distribution")
         st.bar_chart(res_df)
 
-        st.subheader("3D Alpha Carbon (CA) Scatter Plot")
-        try:
-            with open("predicted.pdb", "w") as f:
-                f.write(st.session_state.pdb_string)
-            structure = bsio.load_structure("predicted.pdb")
-            structure = structure[bs.filter_amino_acids(structure)]
-            ca_atoms = structure[structure.atom_name == "CA"]
-            coords = ca_atoms.coord
+        # ===========================
+        # Heatmap of Residue Distances
+        # ===========================
+        st.subheader("Residue-Residue Distance Heatmap")
 
-            fig = plt.figure(figsize=(6, 5))
-            ax = fig.add_subplot(111, projection='3d')
-            ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c='b', marker='o', s=20)
-            ax.set_title("Cα Atom Distribution")
-            ax.set_xlabel("X")
-            ax.set_ylabel("Y")
-            ax.set_zlabel("Z")
-            st.pyplot(fig)
-
-        except Exception as e:
-            st.error(f"Error loading structure for CA scatter plot: {str(e)}")
-
-# ========================
-# MAIN APP
-# ========================
-st.markdown(''' 
-    <div style="text-align: center;">
-        <h1 style="font-family: 'Dustosmo Roman', 'Times New Roman', serif; color:lightyellow;">
-            ProtoAnalyzer
-        </h1>
-        <p>
-            <em>A Streamlit <strong>Component</strong> for creating Speck molecular structures within Streamlit Web app.</em>
-        </p>
-    </div>
-    ''', unsafe_allow_html=True) 
-tab1, tab2 = st.tabs(["🧬 Predictor", "🔍 Analyzer"])
-with tab1:
-    emsfold_app()
-with tab2:
-    ranaatom_app()
+        struct = bsio.load_structure("predicted.pdb")
+        ca_atoms = struct[(struct.atom_name == "
