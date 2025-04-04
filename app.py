@@ -170,28 +170,34 @@ def ranaatom_app():
             mime='text/plain'
         )
     
-   with col2:
-       st.subheader("Structure Analysis")
-    
-    # Split PDB lines once
-       pdb_lines = st.session_state.pdb_string.split('\n')
+    with col2:
+        st.subheader("Structure Analysis")
+        
+        # Split PDB lines once
+        pdb_lines = st.session_state.pdb_string.split('\n')
 
-    # Secondary structure analysis
-       helix_count = sum(1 for line in pdb_lines if line.startswith("HELIX"))
-       sheet_count = sum(1 for line in pdb_lines if line.startswith("SHEET"))
+        # Secondary structure analysis
+        helix_count = sum(1 for line in pdb_lines if line.startswith("HELIX"))
+        sheet_count = sum(1 for line in pdb_lines if line.startswith("SHEET"))
 
-    # Make sure num_atoms is defined somewhere earlier
-    # Example: num_atoms = sum(1 for line in pdb_lines if line.startswith("ATOM"))
+        coil_count = num_atoms - (helix_count + sheet_count)
+        ss_data = pd.DataFrame({
+            'Type': ['Helix', 'Sheet', 'Coil'],
+            'Count': [helix_count, sheet_count, coil_count]
+        })
 
-       coil_count = num_atoms - (helix_count + sheet_count)
-       ss_data = pd.DataFrame({
-           'Type': ['Helix', 'Sheet', 'Coil'],
-           'Count': [helix_count, sheet_count, coil_count]
-      })
+        st.subheader("Secondary Structure")
+        st.bar_chart(ss_data.set_index('Type'))
 
-      st.subheader("Secondary Structure")
-      st.bar_chart(ss_data.set_index('Type'))
-
+        # Residue type distribution
+        res_counts = defaultdict(int)
+        for line in atom_lines:
+            res_name = line[17:20].strip()
+            res_counts[res_name] += 1
+        
+        res_df = pd.DataFrame.from_dict(res_counts, orient='index', columns=['Count'])
+        st.subheader("Residue Distribution")
+        st.bar_chart(res_df)
         
         # Residue type distribution
         res_counts = defaultdict(int)
