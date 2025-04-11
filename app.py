@@ -62,7 +62,7 @@ def emsfold_app():
             
             pdbview = py3Dmol.view()
             pdbview.addModel(st.session_state.pdb_string, 'pdb')
-            pdbview.setStyle({'cartoon': {'color': 'spectrum'}})
+            pdbview.setStyle({'cartoon': {'color': 'blue'}})
             pdbview.setBackgroundColor(background_color.lower())
             if show_labels:
                 pdbview.addResLabels()
